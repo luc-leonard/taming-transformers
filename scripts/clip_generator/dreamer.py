@@ -35,7 +35,7 @@ class Generator(nn.Module):
 
 
 class ZSpace(nn.Module):
-    def __init__(self, model, image_size, make_cutout, device):
+    def __init__(self, model, image_size, device):
         super().__init__()
         self.z_min = model.quantize.embedding.weight.min(dim=0).values[None, :, None, None]
         self.z_max = model.quantize.embedding.weight.max(dim=0).values[None, :, None, None]

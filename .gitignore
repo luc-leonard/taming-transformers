@@ -2,3 +2,5 @@ models
 .idea
 .ipynb_checkpoints
 *.pth
+**/out/
+irc_out/
