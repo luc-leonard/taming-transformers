@@ -28,6 +28,7 @@ class Trainer:
                  cut_pow=1.,
                  seed=None,
                  steps=None,
+                 crazy_mode=False,
                  save_every=50):
 
         if seed is None:
@@ -41,16 +42,18 @@ class Trainer:
             self.iterator = itertools.count(start=0)
         else:
             self.iterator = range(steps)
+        self.steps = steps
 
         self.outdir.mkdir(exist_ok=True, parents=True)
+        (self.outdir / 'prompt.txt').write_text('\n'.join(prompts))
         self.clip_discriminator = ClipDiscriminator(clip_model, prompts, cutn, cut_pow, device)
 
         self.generator = Generator(vqgan_model).to(device)
         self.z_space = ZSpace(vqgan_model, image_size, device=device)
         self.optimizer = optim.Adam([self.z_space.z], lr=learning_rate)
         self.scheduler = None
-        #if steps is not None:
-        #    self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=learning_rate * 10, total_steps=steps)
+        if crazy_mode is True and steps is not None:
+           self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=learning_rate * 10, total_steps=steps)
 
     def get_generated_image_path(self):
         return self.outdir / f'progress_latest.png'

@@ -1,5 +1,6 @@
 import argparse
 import random
+import shlex
 import threading
 from typing import List
 
@@ -12,18 +13,39 @@ from clip_generator.dreamer import load_vqgan_model
 import argparse
 
 from dataclasses import dataclass
-
+import urllib.parse
 
 @dataclass
 class GenerationArgs:
     prompt: str
     crazy_mode: bool
+    learning_rate: float
     steps: int
     refresh_every: int
+    resume_from: str
 
 
-def parse_args(args: List[str]) -> GenerationArgs:
-    return GenerationArgs()
+def parse_prompt_args(prompt: str) -> GenerationArgs:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--crazy-mode', type=bool, default=False)
+    parser.add_argument('--learning-rate', type=float, default=0.05)
+    parser.add_argument('--steps', type=int, default=500)
+    parser.add_argument('--refresh-every', type=int, default=10)
+    parser.add_argument('--resume-from', type=str, default=None)
+    parser.add_argument('--prompt', type=str, required=True)
+    try:
+        parsed_args = parser.parse_args(shlex.split(prompt))
+        print(parsed_args)
+        return GenerationArgs(prompt=parsed_args.prompt,
+                              crazy_mode=parsed_args.crazy_mode,
+                              learning_rate=parsed_args.learning_rate,
+                              refresh_every=parsed_args.refresh_every,
+                              resume_from=parsed_args.resume_from,
+                              steps=parsed_args.steps,
+                              )
+    except SystemExit:
+        raise Exception(parser.usage())
+
 
 class IrcBot(irc.bot.SingleServerIRCBot):
 
@@ -53,25 +75,25 @@ class IrcBot(irc.bot.SingleServerIRCBot):
             if self.stop_generating is True:
                 break
             if it % 100 == 0:
-                c.privmsg(self.channel, f'generation {it}/500')
+                c.privmsg(self.channel, f'generation {it}/{trainer.steps}')
         self.generating = None
         c.privmsg(self.channel, f'Generation done. Ready to take an order')
 
-    def generate_image(self, prompt):
-        trainer = Trainer([prompt],
+    def generate_image(self, arguments: GenerationArgs):
+        trainer = Trainer([arguments.prompt],
                           self.vqgan_model,
                           self.clip,
-                          learning_rate=0.05,
-                          save_every=10,
-                          outdir=f'./irc_out/{random.randint(0, 50000)}',
+                          learning_rate=arguments.learning_rate,
+                          save_every=arguments.refresh_every,
+                          outdir=f'./irc_out/{arguments.prompt}_{random.randint(0, 50000)}',
                           device='cuda:0',
-                          steps=500)
+                          image_size=(700,700),
+                          crazy_mode=arguments.crazy_mode,
+                          steps=arguments.steps)
         return trainer
 
     def on_pubmsg(self, c, e):
         text = e.arguments[0]
-        if len(text) > 100:
-            text = text[:99]
         args = text.split()
 
         if args[0] == '!' + 'generate':
@@ -79,11 +101,15 @@ class IrcBot(irc.bot.SingleServerIRCBot):
                 c.privmsg(e.target, f'currently generating {self.generating}, try again later.')
                 return
             prompt = ' '.join(args[1:])
-
-            c.privmsg(e.target, f'generating {prompt}')
-            trainer = self.generate_image(prompt)
+            try:
+                arguments = parse_prompt_args(prompt)
+            except Exception as ex:
+                c.privmsg(e.target, str(ex))
+                return
+            c.privmsg(e.target, f'generating {arguments.prompt}')
+            trainer = self.generate_image(arguments)
             generated_image_path = trainer.get_generated_image_path()
-            c.privmsg(e.target, f'{prompt} => http://82.65.144.151:8082/{generated_image_path.relative_to(".")}')
+            c.privmsg(e.target, f'{prompt} => http://82.65.144.151:8082/{urllib.parse.quote(str(generated_image_path.relative_to(".")))}')
             self.generating = prompt
             self.stop_generating = False
             self.current_generating_user = e.source
