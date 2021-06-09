@@ -2,13 +2,14 @@ import argparse
 import random
 import shlex
 import threading
+from pathlib import Path
 from typing import List
 
 import clip
 import irc
 import irc.bot
 
-from clip_generator.trainer import Trainer
+from clip_generator.trainer import Trainer, network_list
 from clip_generator.dreamer import load_vqgan_model
 import argparse
 
@@ -23,17 +24,22 @@ class GenerationArgs:
     steps: int
     refresh_every: int
     resume_from: str
+    config: str
+    checkpoint: str
 
 
 def parse_prompt_args(prompt: str) -> GenerationArgs:
     parser = argparse.ArgumentParser()
     parser.add_argument('--crazy-mode', type=bool, default=False)
-    parser.add_argument('--learning-rate', type=float, default=0.05)
+    parser.add_argument('--learning-rate', type=float, default=0.02)
     parser.add_argument('--steps', type=int, default=500)
     parser.add_argument('--refresh-every', type=int, default=10)
     parser.add_argument('--resume-from', type=str, default=None)
     parser.add_argument('--prompt', type=str, required=True)
+    parser.add_argument('--network', type=str, default='imagenet')
     try:
+        networks = network_list()
+
         parsed_args = parser.parse_args(shlex.split(prompt))
         print(parsed_args)
         return GenerationArgs(prompt=parsed_args.prompt,
@@ -42,6 +48,8 @@ def parse_prompt_args(prompt: str) -> GenerationArgs:
                               refresh_every=parsed_args.refresh_every,
                               resume_from=parsed_args.resume_from,
                               steps=parsed_args.steps,
+                              config=Path('..') / networks[parsed_args.network]['config'],
+                              checkpoint=Path('..') / networks[parsed_args.network]['checkpoint'],
                               )
     except SystemExit:
         raise Exception(parser.usage())
@@ -59,7 +67,7 @@ class IrcBot(irc.bot.SingleServerIRCBot):
         print('loading clip')
         self.clip = clip.load('ViT-B/32', jit=False)[0].eval().requires_grad_(False).to('cuda:0')
         print('loading VQGAN')
-        self.vqgan_model = load_vqgan_model('../models/imagenet/vqgan_imagenet_f16_16384.yaml', '../models/imagenet/vqgan_imagenet_f16_16384.ckpt')
+        #self.vqgan_model = load_vqgan_model('../models/imagenet/vqgan_imagenet_f16_16384.yaml', '../models/imagenet/vqgan_imagenet_f16_16384.ckpt')
 
     def on_nicknameinuse(self, c: irc.client, e):
         c.nick(c.get_nickname() + "_")
@@ -80,8 +88,9 @@ class IrcBot(irc.bot.SingleServerIRCBot):
         c.privmsg(self.channel, f'Generation done. Ready to take an order')
 
     def generate_image(self, arguments: GenerationArgs):
+        vqgan_model = load_vqgan_model(arguments.config, arguments.checkpoint).to('cuda')
         trainer = Trainer([arguments.prompt],
-                          self.vqgan_model,
+                          vqgan_model,
                           self.clip,
                           learning_rate=arguments.learning_rate,
                           save_every=arguments.refresh_every,

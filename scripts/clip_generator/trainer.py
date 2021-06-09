@@ -15,6 +15,27 @@ from .dreamer import Generator
 from .dreamer import ZSpace
 
 
+def network_list():
+    models_path = Path('models')
+    return {
+        'ffhq': {
+            'config': models_path / 'ffhq' / 'configs' / '2020-11-13T21-41-45-project.yaml',
+            'checkpoint': models_path / 'ffhq' / 'checkpoints' / 'last.ckpt'
+        },
+        'imagenet': {
+            'config': models_path / 'imagenet' / 'vqgan_imagenet_f16_16384.yaml',
+            'checkpoint': models_path / 'imagenet' / 'vqgan_imagenet_f16_16384.ckpt'
+        },
+        'wikiart': {
+            'config': models_path / 'wikiart' / 'configs' / 'wikiart_f16_16384_8145600.yaml',
+            'checkpoint': models_path / 'wikiart' / 'checkpoints' / 'wikiart_f16_16384_8145600.ckpt',
+        },
+        'coco': {
+            'config': models_path / 'coco' / 'coco.yaml',
+            'checkpoint': models_path / 'coco' / 'coco.ckpt'
+        }
+    }
+
 class Trainer:
     def __init__(self,
                  prompts,
