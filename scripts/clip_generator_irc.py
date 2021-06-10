@@ -2,6 +2,7 @@ import argparse
 import random
 import shlex
 import threading
+import time
 from pathlib import Path
 from typing import List
 
@@ -31,7 +32,7 @@ class GenerationArgs:
 def parse_prompt_args(prompt: str) -> GenerationArgs:
     parser = argparse.ArgumentParser()
     parser.add_argument('--crazy-mode', type=bool, default=False)
-    parser.add_argument('--learning-rate', type=float, default=0.02)
+    parser.add_argument('--learning-rate', type=float, default=0.05)
     parser.add_argument('--steps', type=int, default=500)
     parser.add_argument('--refresh-every', type=int, default=10)
     parser.add_argument('--resume-from', type=str, default=None)
@@ -94,7 +95,7 @@ class IrcBot(irc.bot.SingleServerIRCBot):
                           self.clip,
                           learning_rate=arguments.learning_rate,
                           save_every=arguments.refresh_every,
-                          outdir=f'./irc_out/{arguments.prompt}_{random.randint(0, 50000)}',
+                          outdir=f'./irc_out/{arguments.prompt}_{time.time()}',
                           device='cuda:0',
                           image_size=(700,700),
                           crazy_mode=arguments.crazy_mode,

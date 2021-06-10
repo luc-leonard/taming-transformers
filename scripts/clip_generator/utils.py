@@ -84,20 +84,33 @@ def vector_quantize(x, codebook):
     return replace_grad(x_q, x)
 
 
+class DifferentiableAugmentations(nn.Module):
+    def __init__(self, cutn):
+        super().__init__()
+        self.cutn = cutn
+        self.augs = nn.Sequential(
+            K.RandomHorizontalFlip(p=0.5),
+            K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
+            # K.RandomSolarize(0.01, 0.01, p=0.7),
+            K.RandomSharpness(0.3, p=0.4),
+            K.RandomAffine(degrees=30, translate=0.1, p=0.8, padding_mode='border'),
+            K.RandomPerspective(0.2, p=0.4), )
+        self.noise_fac = 0.1
+
+    def forward(self, input):
+        input = self.augs(input)
+        if self.noise_fac:
+            facs = input.new_empty([self.cutn, 1, 1, 1]).uniform_(0, self.noise_fac)
+            input = input + facs * torch.randn_like(input)
+        return input
+
+
 class MakeCutouts(nn.Module):
     def __init__(self, cut_size, cutn, cut_pow=1.):
         super().__init__()
         self.cut_size = cut_size
         self.cutn = cutn
         self.cut_pow = cut_pow
-        self.augs = nn.Sequential(
-            K.RandomHorizontalFlip(p=0.5),
-            K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
-            # K.RandomSolarize(0.01, 0.01, p=0.7),
-            K.RandomSharpness(0.3,p=0.4),
-            K.RandomAffine(degrees=30, translate=0.1, p=0.8, padding_mode='border'),
-            K.RandomPerspective(0.2,p=0.4),)
-        self.noise_fac = 0.1
 
     def forward(self, input):
         sideY, sideX = input.shape[2:4]
@@ -110,9 +123,4 @@ class MakeCutouts(nn.Module):
             offsety = torch.randint(0, sideY - size + 1, ())
             cutout = input[:, :, offsety:offsety + size, offsetx:offsetx + size]
             cutouts.append(resample(cutout, (self.cut_size, self.cut_size)))
-        batch = self.augs(clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1))
-        if self.noise_fac:
-            facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(0, self.noise_fac)
-            batch = batch + facs * torch.randn_like(batch)
-
-        return batch
+        return clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1)

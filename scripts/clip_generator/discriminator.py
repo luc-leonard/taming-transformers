@@ -4,7 +4,7 @@ from torchvision.transforms import transforms
 import torch.nn.functional as F
 import torch
 
-from .utils import replace_grad, MakeCutouts
+from .utils import replace_grad, MakeCutouts, DifferentiableAugmentations
 
 
 class EmbeddedText(nn.Module):
@@ -30,12 +30,16 @@ class ClipDiscriminator(nn.Module):
         self.normalize = transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
                                               std=[0.26862954, 0.26130258, 0.27577711])
         self.make_cutouts = MakeCutouts(clip_model.visual.input_resolution, cutn, cut_pow=cut_pow)
+        self.augmentations = DifferentiableAugmentations(cutn)
         for text in texts:
             embed = self.clip.encode_text(clip.tokenize(text).to(device)).float()
             self.embeds.append(EmbeddedText(embed).cuda())
 
     def forward(self, image):
-        image_features = self.clip.encode_image(self.normalize(self.make_cutouts(image))).float()
+        x = self.make_cutouts(image)
+        x = self.augmentations(x)
+        x = self.normalize(x)
+        image_features = self.clip.encode_image(x).float()
         result = []
         for embed in self.embeds:
             result.append(embed(image_features))
