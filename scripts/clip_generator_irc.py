@@ -1,6 +1,8 @@
 import argparse
+import datetime
 import random
 import shlex
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -80,22 +82,26 @@ class IrcBot(irc.bot.SingleServerIRCBot):
         ...
 
     def train(self, trainer, c):
+        now = datetime.datetime.now()
         for it in trainer.epoch():
             if self.stop_generating is True:
                 break
             if it % 100 == 0:
                 c.privmsg(self.channel, f'generation {it}/{trainer.steps}')
+        trainer.close()
         self.generating = None
         c.privmsg(self.channel, f'Generation done. Ready to take an order')
+        shutil.copy(trainer.get_generated_image_path(), f'./irc_out/{now.strftime("%Y_%m_%d")}/{now.isoformat()}_{trainer.prompts[0].replace("//", "_")}.png')
 
     def generate_image(self, arguments: GenerationArgs):
         vqgan_model = load_vqgan_model(arguments.config, arguments.checkpoint).to('cuda')
+        now = datetime.datetime.now()
         trainer = Trainer([arguments.prompt],
                           vqgan_model,
                           self.clip,
                           learning_rate=arguments.learning_rate,
                           save_every=arguments.refresh_every,
-                          outdir=f'./irc_out/{arguments.prompt}_{time.time()}',
+                          outdir=f'./irc_out/{now.strftime("%Y_%m_%d")}/{now.isoformat()}_{arguments.prompt}',
                           device='cuda:0',
                           image_size=(700,700),
                           crazy_mode=arguments.crazy_mode,

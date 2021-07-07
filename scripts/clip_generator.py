@@ -1,6 +1,8 @@
 import argparse
+import datetime
 import math
 import random
+import shutil
 import sys
 import time
 
@@ -25,6 +27,7 @@ from clip_generator.dreamer import load_vqgan_model
 def main(ctx, config, checkpoint, lr, seed, outdir, text, steps, one_cycle, unreal_engine):
     # cannot run on CPU ^_^
     print(locals())
+    now = datetime.datetime.now()
     device = 'cuda:0'
     vqgan_model = load_vqgan_model(config, checkpoint)
     clip_model = clip.load('ViT-B/32', jit=False)[0].eval().requires_grad_(False).to(device)
@@ -36,13 +39,18 @@ def main(ctx, config, checkpoint, lr, seed, outdir, text, steps, one_cycle, unre
                       clip_model,
                       seed=seed,
                       save_every=50,
-                      image_size=(800,800),
+                      image_size=(700,700),
                       learning_rate=lr,
-                      outdir=f'{outdir}/{int(time.time())}_{text.replace("//", "_")}/',
+                      outdir=f'{outdir}/{now.strftime("%Y_%m_%d")}/{now.isoformat()}_{text.replace("//", "_")}/',
                       device=device,
                       steps=steps,
                       crazy_mode=one_cycle)
-    trainer.start()
+    try:
+        trainer.start()
+    finally:
+        trainer.close()
+        shutil.copy(trainer.get_generated_image_path(),
+                    f'{outdir}/{now.strftime("%Y_%m_%d")}/{now.isoformat()}_{trainer.prompts[0].replace("//", "_")}.png')
 
 
 if __name__ == '__main__':

@@ -4,3 +4,4 @@ models
 *.pth
 **/out/
 irc_out/
+__pycache__

@@ -4,6 +4,8 @@ import time
 from pathlib import Path
 
 import clip
+import imageio
+import numpy as np
 import torch
 from progressbar import progressbar
 from torch import optim
@@ -56,7 +58,6 @@ class Trainer:
             torch.manual_seed(int(time.time()))
         else:
             torch.manual_seed(seed)
-
         self.save_every = save_every
         self.outdir = Path(outdir)
         if steps is None:
@@ -64,7 +65,7 @@ class Trainer:
         else:
             self.iterator = range(steps)
         self.steps = steps
-
+        self.prompts = prompts
         self.outdir.mkdir(exist_ok=True, parents=True)
         (self.outdir / 'prompt.txt').write_text('\n'.join(prompts))
         self.clip_discriminator = ClipDiscriminator(clip_model, prompts, cutn, cut_pow, device)
@@ -75,6 +76,7 @@ class Trainer:
         self.scheduler = None
         if crazy_mode is True and steps is not None:
            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=learning_rate * 10, total_steps=steps)
+        self.video = imageio.get_writer(f'{outdir}/out.mp4', mode='I', fps=5, codec='libx264', bitrate='16M')
 
     def get_generated_image_path(self):
         return self.outdir / f'progress_latest.png'
@@ -84,15 +86,17 @@ class Trainer:
         losses_str = ', '.join(f'{loss.item():g}' for loss in losses)
         print(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
         pil_image = TF.to_pil_image(generated_image[0].cpu())
-        pil_image.save(str(self.outdir / f'progress_{i}.png'))
-        shutil.copy(
-            str(self.outdir / f'progress_{i}.png'),
-            str(self.outdir / f'progress_latest.png')
-        )
+        self.video.append_data(np.array(pil_image))
+        pil_image.save(str(self.outdir / f'progress_latest.png'))
+
 
     def start(self):
         for it in self.epoch():
             ...
+
+
+    def close(self):
+        self.video.close()
 
     def epoch(self):
         for i in progressbar(self.iterator):
