@@ -1,23 +1,20 @@
+import datetime
 import argparse
 import datetime
-import random
 import shlex
 import shutil
 import threading
-import time
+import urllib.parse
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
 import clip
 import irc
 import irc.bot
 
-from clip_generator.trainer import Trainer, network_list
 from clip_generator.dreamer import load_vqgan_model
-import argparse
+from clip_generator.trainer import Trainer, network_list
 
-from dataclasses import dataclass
-import urllib.parse
 
 @dataclass
 class GenerationArgs:
@@ -29,6 +26,9 @@ class GenerationArgs:
     resume_from: str
     config: str
     checkpoint: str
+    cut: bool
+    nb_augments: int
+    full_image_loss: bool
 
 
 def parse_prompt_args(prompt: str) -> GenerationArgs:
@@ -39,6 +39,9 @@ def parse_prompt_args(prompt: str) -> GenerationArgs:
     parser.add_argument('--refresh-every', type=int, default=10)
     parser.add_argument('--resume-from', type=str, default=None)
     parser.add_argument('--prompt', type=str, required=True)
+    parser.add_argument('--cut', type=int, default=60)
+    parser.add_argument('--transforms', type=int, default=3)
+    parser.add_argument('--full-image-loss', type=bool, default=True)
     parser.add_argument('--network', type=str, default='imagenet')
     try:
         networks = network_list()
@@ -51,8 +54,11 @@ def parse_prompt_args(prompt: str) -> GenerationArgs:
                               refresh_every=parsed_args.refresh_every,
                               resume_from=parsed_args.resume_from,
                               steps=parsed_args.steps,
+                              cut=parsed_args.cut,
                               config=Path('..') / networks[parsed_args.network]['config'],
                               checkpoint=Path('..') / networks[parsed_args.network]['checkpoint'],
+                              nb_augments=parsed_args.transforms,
+                              full_image_loss=parsed_args.full_image_loss,
                               )
     except SystemExit:
         raise Exception(parser.usage())
@@ -69,8 +75,7 @@ class IrcBot(irc.bot.SingleServerIRCBot):
         self.stop_generating = False
         print('loading clip')
         self.clip = clip.load('ViT-B/32', jit=False)[0].eval().requires_grad_(False).to('cuda:0')
-        print('loading VQGAN')
-        #self.vqgan_model = load_vqgan_model('../models/imagenet/vqgan_imagenet_f16_16384.yaml', '../models/imagenet/vqgan_imagenet_f16_16384.ckpt')
+        # self.vqgan_model = load_vqgan_model('../models/imagenet/vqgan_imagenet_f16_16384.yaml', '../models/imagenet/vqgan_imagenet_f16_16384.ckpt')
 
     def on_nicknameinuse(self, c: irc.client, e):
         c.nick(c.get_nickname() + "_")
@@ -91,7 +96,8 @@ class IrcBot(irc.bot.SingleServerIRCBot):
         trainer.close()
         self.generating = None
         c.privmsg(self.channel, f'Generation done. Ready to take an order')
-        shutil.copy(trainer.get_generated_image_path(), f'./irc_out/{now.strftime("%Y_%m_%d")}/{now.isoformat()}_{trainer.prompts[0].replace("//", "_")}.png')
+        shutil.copy(trainer.get_generated_image_path(),
+                    f'./irc_out/{now.strftime("%Y_%m_%d")}/{now.isoformat()}_{trainer.prompts[0].replace("//", "_")}.png')
 
     def generate_image(self, arguments: GenerationArgs):
         vqgan_model = load_vqgan_model(arguments.config, arguments.checkpoint).to('cuda')
@@ -103,9 +109,13 @@ class IrcBot(irc.bot.SingleServerIRCBot):
                           save_every=arguments.refresh_every,
                           outdir=f'./irc_out/{now.strftime("%Y_%m_%d")}/{now.isoformat()}_{arguments.prompt}',
                           device='cuda:0',
-                          image_size=(700,700),
+                          image_size=(640, 640),
                           crazy_mode=arguments.crazy_mode,
-                          steps=arguments.steps)
+                          cutn=arguments.cut,
+                          steps=arguments.steps,
+                          full_image_loss=arguments.full_image_loss,
+                          nb_augments=arguments.nb_augments,
+                          )
         return trainer
 
     def on_pubmsg(self, c, e):
@@ -125,16 +135,16 @@ class IrcBot(irc.bot.SingleServerIRCBot):
             c.privmsg(e.target, f'generating {arguments.prompt}')
             trainer = self.generate_image(arguments)
             generated_image_path = trainer.get_generated_image_path()
-            c.privmsg(e.target, f'{prompt} => http://82.65.144.151:8082/{urllib.parse.quote(str(generated_image_path.relative_to(".")))}')
+            c.privmsg(e.target,
+                      f'{prompt} => http://82.65.144.151:8082/{urllib.parse.quote(str(generated_image_path.relative_to(".")))}')
             self.generating = prompt
             self.stop_generating = False
             self.current_generating_user = e.source
-            self.generating_thread = threading.Thread(target=self.train, args=(trainer,c))
+            self.generating_thread = threading.Thread(target=self.train, args=(trainer, c))
             self.generating_thread.start()
 
         if args[0] == '!' + 'stop' and e.source == self.current_generating_user:
             self.stop_generating = True
-
 
     def on_dccmsg(self, c, e):
         pass
@@ -150,7 +160,6 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--name", help="the name")
-
 
     parser.add_argument("--server", help="the model")
     parser.add_argument("--channel", help="the model")

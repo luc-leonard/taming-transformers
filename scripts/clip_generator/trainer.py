@@ -52,6 +52,8 @@ class Trainer:
                  seed=None,
                  steps=None,
                  crazy_mode=False,
+                 nb_augments=3,
+                 full_image_loss=True,
                  save_every=50):
 
         if seed is None:
@@ -68,7 +70,9 @@ class Trainer:
         self.prompts = prompts
         self.outdir.mkdir(exist_ok=True, parents=True)
         (self.outdir / 'prompt.txt').write_text('\n'.join(prompts))
-        self.clip_discriminator = ClipDiscriminator(clip_model, prompts, cutn, cut_pow, device)
+        self.clip_discriminator = ClipDiscriminator(clip_model, prompts, cutn, cut_pow, device,
+                                                    full_image_loss=full_image_loss,
+                                                    nb_augments=nb_augments )
 
         self.generator = Generator(vqgan_model).to(device)
         self.z_space = ZSpace(vqgan_model, image_size, device=device)
@@ -89,11 +93,9 @@ class Trainer:
         self.video.append_data(np.array(pil_image))
         pil_image.save(str(self.outdir / f'progress_latest.png'))
 
-
     def start(self):
-        for it in self.epoch():
+        for _ in self.epoch():
             ...
-
 
     def close(self):
         self.video.close()
@@ -105,7 +107,7 @@ class Trainer:
             losses = self.clip_discriminator(generated_image)
             if i % self.save_every == 0:
                 self.save_image(i, generated_image, losses)
-                yield i
+            yield i
 
             sum(losses).backward()
             self.optimizer.step()

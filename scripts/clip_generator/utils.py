@@ -91,7 +91,7 @@ class DifferentiableAugmentations(nn.Module):
         self.augs = nn.Sequential(
             K.RandomHorizontalFlip(p=0.5),
             K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
-            # K.RandomSolarize(0.01, 0.01, p=0.7),
+            #K.RandomSolarize(0.01, 0.01, p=0.7),
             K.RandomSharpness(0.3, p=0.4),
             K.RandomAffine(degrees=30, translate=0.1, p=0.8, padding_mode='border'),
             K.RandomPerspective(0.2, p=0.4), )
@@ -100,7 +100,7 @@ class DifferentiableAugmentations(nn.Module):
     def forward(self, input):
         input = self.augs(input)
         if self.noise_fac:
-            facs = input.new_empty([self.cutn, 1, 1, 1]).uniform_(0, self.noise_fac)
+            facs = input.new_empty([self.cutn + 1, 1, 1, 1]).uniform_(0, self.noise_fac)
             input = input + facs * torch.randn_like(input)
         return input
 
