@@ -1,12 +1,6 @@
 ##### CVPR 2021 (Oral)
 ![teaser](assets/mountain.jpeg)
->>>>>>> 9d17ea64b820f7633ea6b8823e1f78729447cb57
 
-I added a small script in the `scripts` subfolder to generate image from text, using clip from OPENAI
-
-<<<<<<< HEAD
-`python clip_generator.py --config ../models/imagenet/vqgan_imagenet_f16_16384.yaml --checkpoint ../models/imagenet/vqgan_imagenet_f16_16384.ckpt --text 'A cute fox wearing a tuxedo' --outdir ./out/fox`
-=======
 **tl;dr** We combine the efficiancy of convolutional approaches with the expressivity of transformers by introducing a convolutional VQGAN, which learns a codebook of context-rich visual parts, whose composition is modeled with an autoregressive transformer.
 
 ![teaser](assets/teaser.png)

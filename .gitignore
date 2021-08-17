@@ -4,4 +4,6 @@ models
 *.pth
 **/out/
 irc_out/
+discord_out/
+discord_out_diffusion/
 __pycache__

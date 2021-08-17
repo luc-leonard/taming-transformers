@@ -1,15 +1,12 @@
 import itertools
-import shutil
 import time
 from pathlib import Path
 
-import clip
 import imageio
 import numpy as np
 import torch
 from progressbar import progressbar
 from torch import optim
-from torch.optim.lr_scheduler import OneCycleLR
 from torchvision.transforms import functional as TF
 
 from .discriminator import ClipDiscriminator
@@ -37,6 +34,7 @@ def network_list():
             'checkpoint': models_path / 'coco' / 'coco.ckpt'
         }
     }
+
 
 class Trainer:
     def __init__(self,

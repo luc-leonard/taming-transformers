@@ -9,13 +9,17 @@ from torchvision.transforms import transforms
 from .utils import replace_grad, MakeCutouts, DifferentiableAugmentations, resample
 
 
+class Prompt:
+    text: str
+    weight: float = 1.
+
+
 class EmbeddedText(nn.Module):
     def __init__(self, embed, weight=1., stop=float('-inf')):
         super().__init__()
         self.register_buffer('embed', embed)
         self.register_buffer('weight', torch.as_tensor(weight))
         self.register_buffer('stop', torch.as_tensor(stop))
-        print(self.embed.shape)
 
     def forward(self, image_features):
         input_normed = F.normalize(image_features.unsqueeze(1), dim=2)
@@ -59,11 +63,11 @@ class ClipDiscriminator(nn.Module):
 
         if len(texts) > 1:
             self.embeds.append(AveragedEmbeddedTexts(torch.cat(
-                [self.clip.encode_text(clip.tokenize(text).to(device)).float()
+                [self.clip.encode_text(clip.tokenize(text.strip()).to(device)).float()
                  for text in texts]
             )).cuda())
         for text in texts:
-            embed = self.clip.encode_text(clip.tokenize(text).to(device)).float()
+            embed = self.clip.encode_text(clip.tokenize(text.strip()).to(device)).float()
             self.embeds.append(EmbeddedText(embed).cuda())
 
     def forward(self, x):

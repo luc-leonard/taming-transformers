@@ -7,47 +7,55 @@ import threading
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import clip
 import irc
 import irc.bot
+from pydantic import BaseModel
 
 from clip_generator.dreamer import load_vqgan_model
 from clip_generator.trainer import Trainer, network_list
+from scripts.guided_diffusion_hd.clip_guided import Trainer as Diffusion_trainer
+
+networks = network_list()
 
 
-@dataclass
-class GenerationArgs:
-    prompt: str
-    crazy_mode: bool
-    learning_rate: float
-    steps: int
-    refresh_every: int
-    resume_from: str
-    config: str
-    checkpoint: str
-    cut: bool
-    nb_augments: int
-    full_image_loss: bool
+class GenerationArgs(BaseModel):
+    steps: int = 500
+    refresh_every: int = 100
+    resume_from: Optional[str] = None
+    network: str = 'imagenet',
+    cut: int = 64
+    nb_augments: int = 3
+    full_image_loss: bool = True
+    prompt: str = ''
+    crazy_mode: bool = False
+    learning_rate: float = 0.05
+
+    @property
+    def config(self):
+        return Path('..') / networks[self.network]['config']
+
+    @property
+    def checkpoint(self):
+        return Path('..') / networks[self.network]['checkpoint']
 
 
-def parse_prompt_args(prompt: str) -> GenerationArgs:
+def parse_prompt_args(prompt: str = '') -> GenerationArgs:
     parser = argparse.ArgumentParser()
     parser.add_argument('--crazy-mode', type=bool, default=False)
     parser.add_argument('--learning-rate', type=float, default=0.05)
     parser.add_argument('--steps', type=int, default=500)
     parser.add_argument('--refresh-every', type=int, default=10)
     parser.add_argument('--resume-from', type=str, default=None)
-    parser.add_argument('--prompt', type=str, required=True)
-    parser.add_argument('--cut', type=int, default=60)
-    parser.add_argument('--transforms', type=int, default=3)
+    parser.add_argument('--prompt', type=str, default='')
+    parser.add_argument('--cut', type=int, default=64)
+    parser.add_argument('--transforms', type=int, default=1)
     parser.add_argument('--full-image-loss', type=bool, default=True)
     parser.add_argument('--network', type=str, default='imagenet')
     try:
-        networks = network_list()
-
         parsed_args = parser.parse_args(shlex.split(prompt))
-        print(parsed_args)
         return GenerationArgs(prompt=parsed_args.prompt,
                               crazy_mode=parsed_args.crazy_mode,
                               learning_rate=parsed_args.learning_rate,
@@ -55,8 +63,7 @@ def parse_prompt_args(prompt: str) -> GenerationArgs:
                               resume_from=parsed_args.resume_from,
                               steps=parsed_args.steps,
                               cut=parsed_args.cut,
-                              config=Path('..') / networks[parsed_args.network]['config'],
-                              checkpoint=Path('..') / networks[parsed_args.network]['checkpoint'],
+                              network = parsed_args.network,
                               nb_augments=parsed_args.transforms,
                               full_image_loss=parsed_args.full_image_loss,
                               )
@@ -74,7 +81,7 @@ class IrcBot(irc.bot.SingleServerIRCBot):
         self.current_generating_user = None
         self.stop_generating = False
         print('loading clip')
-        self.clip = clip.load('ViT-B/32', jit=False)[0].eval().requires_grad_(False).to('cuda:0')
+        #self.clip = clip.load('ViT-B/32', jit=False)[0].eval().requires_grad_(False).to('cuda:0')
         # self.vqgan_model = load_vqgan_model('../models/imagenet/vqgan_imagenet_f16_16384.yaml', '../models/imagenet/vqgan_imagenet_f16_16384.ckpt')
 
     def on_nicknameinuse(self, c: irc.client, e):
@@ -118,6 +125,23 @@ class IrcBot(irc.bot.SingleServerIRCBot):
                           )
         return trainer
 
+    def generate_image_diffusion(self, arguments: GenerationArgs):
+        print(arguments)
+        now = datetime.datetime.now()
+        trainer = Diffusion_trainer(arguments.prompt.split('||')[0],
+            learning_rate = arguments.learning_rate,
+            save_every = arguments.refresh_every,
+            outdir = f'./discord_out_diffusion/{now.strftime("%Y_%m_%d")}/{now.isoformat()}_{arguments.prompt}',
+            device = 'cuda:0',
+            image_size = (600, 600),
+            crazy_mode = arguments.crazy_mode,
+            cutn = arguments.cut,
+            steps = arguments.steps,
+            full_image_loss = True,
+            nb_augments = 1,
+        )
+        return trainer
+
     def on_pubmsg(self, c, e):
         text = e.arguments[0]
         args = text.split()
@@ -133,7 +157,7 @@ class IrcBot(irc.bot.SingleServerIRCBot):
                 c.privmsg(e.target, str(ex))
                 return
             c.privmsg(e.target, f'generating {arguments.prompt}')
-            trainer = self.generate_image(arguments)
+            trainer = self.generate_image_diffusion(arguments)
             generated_image_path = trainer.get_generated_image_path()
             c.privmsg(e.target,
                       f'{prompt} => http://82.65.144.151:8082/{urllib.parse.quote(str(generated_image_path.relative_to(".")))}')
